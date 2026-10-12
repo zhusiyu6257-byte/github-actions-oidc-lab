@@ -1,0 +1,37 @@
+name: List VPC Subnets (OIDC)
+
+# push 到 main 或手动触发都会跑
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# OIDC 必需：允许 workflow 向 GitHub 的 OIDC 提供者请求 token
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  list-subnets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # 角色 ARN 不是秘密——没有信任策略匹配的 token 根本扮演不了它
+          role-to-assume: arn:aws:iam::394070775436:role/github-actions-oidc-lab
+          aws-region: us-west-2
+
+      - name: Who am I (prove OIDC worked)
+        run: aws sts get-caller-identity
+
+      - name: List the VPC built by Terraform (project 05)
+        run: |
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=cidr,Values=10.0.0.0/16" \
+            --query 'Vpcs[0].VpcId' --output text)
+          echo "VPC: $VPC_ID"
+          aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=$VPC_ID" \
+            --query 'Subnets[].{Name:Tags[?Key==`Name`]|[0].Value,AZ:AvailabilityZone,CIDR:CidrBlock}' \
+            --output table
