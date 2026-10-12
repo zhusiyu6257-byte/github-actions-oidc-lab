@@ -1,20 +1,50 @@
 name: List VPC Subnets (OIDC)
 
-# push 到 main 或手动触发都会跑
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 # OIDC 必需：允许 workflow 向 GitHub 的 OIDC 提供者请求 token
+# contents: write 用于把调试结果提交回仓库
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   list-subnets:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Debug OIDC token (claims + cert thumbprints)
+        run: |
+          python3 - <<'EOF'
+          import base64, hashlib, json, os, urllib.request
+
+          req = urllib.request.Request(
+              os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com",
+              headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+          token = json.load(urllib.request.urlopen(req))["value"]
+
+          p = token.split(".")
+          dec = lambda s: base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+          hdr, payload = json.loads(dec(p[0])), json.loads(dec(p[1]))
+
+          lines = []
+          lines.append("iss: " + str(payload.get("iss")))
+          lines.append("sub: " + str(payload.get("sub")))
+          lines.append("aud: " + str(payload.get("aud")))
+          for i, c in enumerate(hdr.get("x5c", [])):
+              tp = hashlib.sha1(base64.b64decode(c)).hexdigest()
+              lines.append(f"x5c[{i}] sha1 thumbprint: {tp}")
+
+          print("\n".join(lines))
+          with open("oidc-debug.txt", "w") as f:
+              f.write("\n".join(lines) + "\n")
+          EOF
+
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -35,3 +65,13 @@ jobs:
             --filters "Name=vpc-id,Values=$VPC_ID" \
             --query 'Subnets[].{Name:Tags[?Key==`Name`]|[0].Value,AZ:AvailabilityZone,CIDR:CidrBlock}' \
             --output table
+
+      - name: Commit debug output
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add oidc-debug.txt
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "chore: record OIDC token debug info [skip ci]"
+          git push
