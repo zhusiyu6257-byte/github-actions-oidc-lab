@@ -21,9 +21,11 @@ data "aws_iam_policy_document" "github_oidc_trust" {
     }
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      # GitHub 新版 sub 格式带用户 ID 和仓库 ID：repo:owner@owner_id/repo@repo_id:ref:...
+      # 真实值由 workflow 的 debug 步骤抓取（oidc-debug.txt）
+      values   = [var.github_sub]
     }
   }
 }
