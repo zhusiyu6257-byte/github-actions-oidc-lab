@@ -1,0 +1,3 @@
+iss: https://token.actions.githubusercontent.com
+sub: repo:zhusiyu6257-byte@240390313/github-actions-oidc-lab@1414912749:ref:refs/heads/main
+aud: sts.amazonaws.com
