@@ -5,7 +5,9 @@
 data "aws_iam_policy_document" "github_oidc_trust" {
   statement {
     effect  = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+    # sts:TagSession：configure-aws-credentials@v4 默认给会话打审计标签
+    # （GitHubRepository/GitHubActor 等），信任策略必须放行，否则扮演失败
+    actions = ["sts:AssumeRoleWithWebIdentity", "sts:TagSession"]
 
     principals {
       type        = "Federated"
